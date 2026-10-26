@@ -1,0 +1,11 @@
+# Packer
+output/
+packer_cache/
+crash.log
+*.qcow2
+*.iso
+
+# Secrets
+secrets.auto.pkrvars.hcl
+*.secret.pkrvars.hcl
+packer-build.log

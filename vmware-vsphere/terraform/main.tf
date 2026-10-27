@@ -31,11 +31,24 @@ data "vsphere_virtual_machine" "template" {
   datacenter_id = data.vsphere_datacenter.dc.id
 }
 
+#######################################
+# VM folder that keeps the cluster nodes apart from other VMs
+#######################################
+locals {
+  vm_folder_path = var.vm_folder_parent == "" ? var.vm_folder : "${trim(var.vm_folder_parent, "/")}/${var.vm_folder}"
+}
+
 resource "vsphere_folder" "k8s" {
-  count         = var.vm_folder == "" ? 0 : 1
-  path          = var.vm_folder
+  count         = var.create_vm_folder ? 1 : 0
+  path          = local.vm_folder_path
   type          = "vm"
   datacenter_id = data.vsphere_datacenter.dc.id
+}
+
+# Fails early if create_vm_folder = false and the folder does not exist
+data "vsphere_folder" "existing" {
+  count = var.create_vm_folder ? 0 : 1
+  path  = "/${var.datacenter}/vm/${local.vm_folder_path}"
 }
 
 #######################################
@@ -104,7 +117,7 @@ resource "vsphere_virtual_machine" "node" {
   for_each = local.nodes
 
   name             = each.key
-  folder           = var.vm_folder == "" ? null : vsphere_folder.k8s[0].path
+  folder           = var.create_vm_folder ? vsphere_folder.k8s[0].path : trimprefix(data.vsphere_folder.existing[0].path, "/${var.datacenter}/vm/")
   resource_pool_id = local.resource_pool_id
   datastore_id     = data.vsphere_datastore.ds.id
 

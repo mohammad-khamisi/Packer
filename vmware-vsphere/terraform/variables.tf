@@ -52,9 +52,25 @@ variable "template" {
 }
 
 variable "vm_folder" {
-  description = "VM folder created for the cluster (empty = datacenter root)"
+  description = "Name of the VM folder that holds all nodes of this cluster (any name you like, e.g. \"k8s-prod\")"
   type        = string
-  default     = "kubernetes"
+
+  validation {
+    condition     = length(trimspace(var.vm_folder)) > 0 && !startswith(var.vm_folder, "/") && !endswith(var.vm_folder, "/")
+    error_message = "vm_folder must be a non-empty name without a leading or trailing \"/\"."
+  }
+}
+
+variable "vm_folder_parent" {
+  description = "Existing parent folder for vm_folder (e.g. \"Projects/Team-A\"); empty = datacenter root"
+  type        = string
+  default     = ""
+}
+
+variable "create_vm_folder" {
+  description = "true = Terraform creates vm_folder (and deletes it on destroy); false = use a folder that already exists"
+  type        = bool
+  default     = true
 }
 
 variable "resource_pool" {

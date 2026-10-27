@@ -14,8 +14,12 @@ cluster       = "Cluster01"
 datastore     = "datastore1"
 network       = "VM Network"
 template      = "templates/rocky10-template" # template built with Packer (needs cloud-init + open-vm-tools)
-vm_folder     = "kubernetes"
 resource_pool = "" # "" = cluster root
+
+# ---------- VM folder (keeps the cluster VMs separate from other VMs) ----------
+vm_folder        = "k8s-prod" # any name you like
+vm_folder_parent = ""         # existing parent folder, e.g. "Projects/Team-A" ("" = datacenter root)
+create_vm_folder = true       # false = the folder already exists, just put the VMs in it
 
 enable_anti_affinity = true
 

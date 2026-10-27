@@ -76,6 +76,16 @@ workers = {
 }
 ```
 
+- **پوشه اختصاصی در vSphere:** همه VMهای کلاستر داخل یک پوشه (VM Folder) با نام دلخواه شما قرار می‌گیرند تا از بقیه VMها جدا باشند:
+
+  ```hcl
+  vm_folder        = "k8s-prod"         # نام دلخواه پوشه
+  vm_folder_parent = "Projects/Team-A"  # (اختیاری) پوشه والدی که از قبل وجود دارد؛ "" = ریشه دیتاسنتر
+  create_vm_folder = true               # false = پوشه از قبل وجود دارد و فقط VMها داخلش می‌روند
+  ```
+
+  نتیجه در vCenter: `DC01 › Projects › Team-A › k8s-prod › k8s-master-01 …`
+  با `create_vm_folder = true` پوشه توسط Terraform ساخته و با `terraform destroy` حذف می‌شود؛ پوشه والد باید از قبل وجود داشته باشد.
 - برای HA از **۳ مستر** (عدد فرد) استفاده کنید.
 - با `enable_anti_affinity = true` قانون DRS ساخته می‌شود تا مسترها (و ورکرها) روی هاست‌های ESXi متفاوت باشند.
 - `enable_disk_uuid` برای vSphere CSI Driver فعال است.

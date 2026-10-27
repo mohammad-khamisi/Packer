@@ -12,3 +12,8 @@ output "ansible_inventory" {
   description = "Generated Ansible inventory file"
   value       = local_file.ansible_inventory.filename
 }
+
+output "vm_folder" {
+  description = "vSphere folder that holds the cluster VMs"
+  value       = "/${var.datacenter}/vm/${local.vm_folder_path}"
+}

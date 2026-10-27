@@ -45,6 +45,14 @@ export TF_VAR_vsphere_password='...'
 terraform init && terraform plan && terraform apply
 ```
 
+All cluster VMs go into their **own VM folder** whose name you choose, so they stay apart from other VMs:
+
+```hcl
+vm_folder        = "k8s-prod"         # any name
+vm_folder_parent = "Projects/Team-A"  # optional existing parent folder ("" = datacenter root)
+create_vm_folder = true               # false = folder already exists, just place the VMs in it
+```
+
 Nodes are defined in the `masters` / `workers` maps (hardware from `master_defaults` / `worker_defaults`, overridable per node). Use 3 masters for HA. `enable_anti_affinity` creates DRS rules to spread nodes across ESXi hosts. `ansible/inventory/hosts.ini` is written automatically.
 
 ## 3. Install Kubernetes

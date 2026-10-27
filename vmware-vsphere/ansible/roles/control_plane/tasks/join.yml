@@ -1,0 +1,37 @@
+---
+- name: Create join token on first master
+  ansible.builtin.command: kubeadm token create --print-join-command --ttl 30m
+  delegate_to: "{{ first_master }}"
+  register: join_command
+  changed_when: true
+
+- name: Upload control-plane certificates on first master
+  ansible.builtin.command: kubeadm init phase upload-certs --upload-certs
+  delegate_to: "{{ first_master }}"
+  register: upload_certs
+  changed_when: true
+
+- name: Create manifests directory
+  ansible.builtin.file:
+    path: /etc/kubernetes/manifests
+    state: directory
+    mode: "0755"
+
+- name: Place kube-vip manifest
+  ansible.builtin.template:
+    src: kube-vip.yaml.j2
+    dest: /etc/kubernetes/manifests/kube-vip.yaml
+    mode: "0600"
+  vars:
+    kube_vip_kubeconfig: /etc/kubernetes/admin.conf
+  when: control_plane_vip | length > 0
+
+- name: Join as control-plane node
+  ansible.builtin.command: >-
+    {{ join_command.stdout }}
+    --control-plane
+    --certificate-key {{ upload_certs.stdout_lines[-1] }}
+    --apiserver-advertise-address {{ node_ip }}
+    --apiserver-bind-port {{ control_plane_port }}
+    --ignore-preflight-errors=DirAvailable--etc-kubernetes-manifests
+  changed_when: true

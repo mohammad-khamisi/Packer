@@ -1,0 +1,23 @@
+---
+- name: Install Calico operator CRDs and tigera-operator
+  ansible.builtin.command: >-
+    kubectl apply --server-side --force-conflicts -f {{ calico_manifest_base }}/{{ item }}
+  loop:
+    - operator-crds.yaml
+    - tigera-operator.yaml
+  changed_when: false # server-side apply is idempotent
+
+- name: Wait for the Installation CRD
+  ansible.builtin.command: kubectl wait --for=condition=Established crd/installations.operator.tigera.io --timeout=120s
+  changed_when: false
+
+- name: Write Calico Installation resource
+  ansible.builtin.template:
+    src: calico-installation.yaml.j2
+    dest: /etc/kubernetes/calico-installation.yaml
+    mode: "0644"
+
+- name: Apply Calico Installation resource
+  ansible.builtin.command: kubectl apply -f /etc/kubernetes/calico-installation.yaml
+  register: calico_install
+  changed_when: "'unchanged' not in calico_install.stdout"

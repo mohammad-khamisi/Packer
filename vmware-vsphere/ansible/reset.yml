@@ -1,0 +1,42 @@
+---
+# DESTRUCTIVE: wipes Kubernetes from every node so site.yml can run again from scratch.
+#   ansible-playbook reset.yml -e confirm_reset=yes
+- name: Reset Kubernetes on all nodes
+  hosts: k8s_cluster
+  gather_facts: false
+  tasks:
+    - name: Require explicit confirmation
+      ansible.builtin.assert:
+        that: confirm_reset | default('no') == 'yes'
+        fail_msg: "Run with -e confirm_reset=yes"
+      run_once: true
+
+    - name: Run kubeadm reset
+      ansible.builtin.command: kubeadm reset -f
+      register: reset_out
+      changed_when: true
+      failed_when: false
+
+    - name: Remove leftover files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/cni/net.d
+        - /etc/kubernetes/manifests/kube-vip.yaml
+        - /etc/kubernetes/kubeadm-config.yaml
+        - /etc/kubernetes/calico-installation.yaml
+        - /var/lib/etcd
+        - /root/.kube
+        - "/home/{{ ansible_user }}/.kube"
+
+    - name: Flush iptables and IPVS rules
+      ansible.builtin.shell: |
+        iptables -F && iptables -t nat -F && iptables -t mangle -F && iptables -X
+        ipvsadm --clear || true
+      changed_when: true
+
+    - name: Remove Calico/flannel interfaces
+      ansible.builtin.shell: |
+        for i in vxlan.calico tunl0 cni0 flannel.1; do ip link del "$i" 2>/dev/null || true; done
+      changed_when: true

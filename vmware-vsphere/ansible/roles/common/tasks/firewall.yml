@@ -1,0 +1,100 @@
+---
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Set firewall port lists
+  ansible.builtin.set_fact:
+    fw_ports: >-
+      {{ (['6443/tcp', '2379-2380/tcp', '10257/tcp', '10259/tcp'] if inventory_hostname in groups['masters'] else ['30000-32767/tcp', '30000-32767/udp'])
+         + ['10250/tcp', '10256/tcp', '179/tcp', '4789/udp', '5473/tcp', '9099/tcp'] }}
+    fw_trusted_sources:
+      - "{{ pod_network_cidr }}"
+      - "{{ service_cidr }}"
+    firewalld_present: "{{ 'firewalld.service' in ansible_facts.services }}"
+    ufw_present: "{{ 'ufw.service' in ansible_facts.services }}"
+
+# ----- firewalld (RedHat family) -----
+- name: Firewalld - open Kubernetes / Calico ports
+  when: firewalld_present and firewall_mode == 'open-ports'
+  block:
+    - name: Ensure firewalld is running
+      ansible.builtin.service:
+        name: firewalld
+        state: started
+        enabled: true
+
+    - name: Open ports
+      ansible.posix.firewalld:
+        port: "{{ item }}"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop: "{{ fw_ports }}"
+
+    - name: Trust pod and service networks
+      ansible.posix.firewalld:
+        zone: trusted
+        source: "{{ item }}"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop: "{{ fw_trusted_sources }}"
+
+    - name: Allow IP-in-IP (Calico IPIP)
+      ansible.posix.firewalld:
+        rich_rule: 'rule protocol value="4" accept'
+        permanent: true
+        immediate: true
+        state: enabled
+      when: calico_encapsulation == 'IPIP'
+
+    - name: Enable masquerade
+      ansible.posix.firewalld:
+        masquerade: true
+        permanent: true
+        immediate: true
+        state: enabled
+
+- name: Firewalld - disable
+  ansible.builtin.service:
+    name: firewalld
+    state: stopped
+    enabled: false
+  when: firewalld_present and firewall_mode == 'disable'
+
+# ----- ufw (Debian family) -----
+- name: UFW - open Kubernetes / Calico ports
+  when: ufw_present and firewall_mode == 'open-ports'
+  block:
+    - name: Allow SSH
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: Open ports
+      community.general.ufw:
+        rule: allow
+        port: "{{ item.split('/')[0] | replace('-', ':') }}"
+        proto: "{{ item.split('/')[1] }}"
+      loop: "{{ fw_ports }}"
+
+    - name: Allow pod and service networks
+      community.general.ufw:
+        rule: allow
+        from_ip: "{{ item }}"
+      loop: "{{ fw_trusted_sources }}"
+
+    - name: Allow routed (forwarded) traffic
+      ansible.builtin.lineinfile:
+        path: /etc/default/ufw
+        regexp: '^DEFAULT_FORWARD_POLICY='
+        line: 'DEFAULT_FORWARD_POLICY="ACCEPT"'
+
+    - name: Enable ufw
+      community.general.ufw:
+        state: enabled
+
+- name: UFW - disable
+  community.general.ufw:
+    state: disabled
+  when: ufw_present and firewall_mode == 'disable'

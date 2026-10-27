@@ -1,0 +1,31 @@
+---
+# ---------- Kubernetes ----------
+kubernetes_version: "1.36"          # minor version (pkgs.k8s.io repo channel)
+kubernetes_package_version: ""      # exact patch, e.g. "1.36.2" ("" = latest in the minor)
+pod_network_cidr: "10.244.0.0/16"   # must not overlap the node network
+service_cidr: "10.96.0.0/12"
+cluster_domain: "cluster.local"
+
+# Control-plane endpoint.
+# With more than one master set a free IP in the node subnet: kube-vip will float it between masters.
+# Leave empty with a single master (the master's IP is used).
+control_plane_vip: ""               # e.g. "192.168.10.10"
+control_plane_port: 6443
+kube_vip_version: "v1.3.1"
+
+# ---------- CNI ----------
+calico_version: "v3.33.0"
+calico_encapsulation: "VXLANCrossSubnet"   # VXLAN | VXLANCrossSubnet | IPIP | None
+
+# ---------- OS ----------
+timezone: "Asia/Tehran"
+selinux_state: permissive
+firewall_mode: open-ports           # open-ports | disable
+ntp_servers: []                     # empty = distro default pool
+
+# Kubeconfig of the cluster is copied here on the Ansible controller
+kubeconfig_local_path: "{{ playbook_dir }}/artifacts/admin.conf"
+
+# IP each node uses for Kubernetes (kubelet --node-ip, API advertise address, /etc/hosts)
+node_ip: "{{ ansible_host | default(ansible_default_ipv4.address) }}"
+k8s_cluster_name: "kubernetes"

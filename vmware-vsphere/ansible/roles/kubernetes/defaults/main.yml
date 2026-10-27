@@ -1,0 +1,3 @@
+---
+kubernetes_repo_url: "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}"
+kubernetes_packages: [kubelet, kubeadm, kubectl]

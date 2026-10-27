@@ -1,0 +1,72 @@
+---
+- name: Add Docker CE repo (RedHat) - provides containerd.io
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/rhel/docker-ce.repo
+    dest: /etc/yum.repos.d/docker-ce.repo
+    mode: "0644"
+  when: ansible_os_family == 'RedHat'
+
+- name: Install containerd (RedHat)
+  ansible.builtin.dnf:
+    name: containerd.io
+    state: present
+    allowerasing: true # replaces the distro runc package
+  when: ansible_os_family == 'RedHat'
+
+- name: Add Docker apt repo and install containerd (Debian)
+  when: ansible_os_family == 'Debian'
+  block:
+    - name: Add Docker repo
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: "https://download.docker.com/linux/{{ ansible_distribution | lower }}"
+        suites: ["{{ ansible_distribution_release }}"]
+        components: [stable]
+        architectures: ["{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"]
+        signed_by: "https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg"
+
+    - name: Install containerd
+      ansible.builtin.apt:
+        name: containerd.io
+        state: present
+        update_cache: true
+
+- name: Generate default containerd config
+  ansible.builtin.command: containerd config default
+  register: containerd_default_config
+  changed_when: false
+
+- name: Build containerd config with systemd cgroup driver
+  ansible.builtin.set_fact:
+    containerd_config: "{{ containerd_default_config.stdout | regex_replace('SystemdCgroup = false', 'SystemdCgroup = true') }}"
+
+- name: Check systemd cgroup driver is set
+  ansible.builtin.assert:
+    that: "'SystemdCgroup = true' in containerd_config"
+    fail_msg: "Could not enable SystemdCgroup in the containerd config"
+
+- name: Write /etc/containerd/config.toml
+  ansible.builtin.copy:
+    dest: /etc/containerd/config.toml
+    content: "{{ containerd_config }}\n"
+    mode: "0644"
+  notify: Restart containerd
+
+- name: Configure crictl
+  ansible.builtin.copy:
+    dest: /etc/crictl.yaml
+    mode: "0644"
+    content: |
+      runtime-endpoint: unix:///run/containerd/containerd.sock
+      image-endpoint: unix:///run/containerd/containerd.sock
+      timeout: 10
+
+- name: Enable and start containerd
+  ansible.builtin.service:
+    name: containerd
+    state: started
+    enabled: true
+
+- name: Apply containerd config before kubeadm runs
+  ansible.builtin.meta: flush_handlers

@@ -1,0 +1,51 @@
+---
+- name: Check control-plane settings
+  ansible.builtin.assert:
+    that: groups['masters'] | length == 1 or control_plane_vip | length > 0
+    fail_msg: "With more than one master set control_plane_vip in group_vars/all.yml"
+
+- name: Check whether this node is already part of the cluster
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: admin_conf
+
+- name: Initialise first master
+  ansible.builtin.include_tasks: init.yml
+  when: inventory_hostname == first_master and not admin_conf.stat.exists
+
+- name: Join additional master
+  ansible.builtin.include_tasks: join.yml
+  when: inventory_hostname != first_master and not admin_conf.stat.exists
+
+- name: Point kube-vip at admin.conf
+  ansible.builtin.template:
+    src: kube-vip.yaml.j2
+    dest: /etc/kubernetes/manifests/kube-vip.yaml
+    mode: "0600"
+  vars:
+    kube_vip_kubeconfig: /etc/kubernetes/admin.conf
+  when: control_plane_vip | length > 0
+
+- name: Create .kube directories
+  ansible.builtin.file:
+    path: "{{ item.home }}/.kube"
+    state: directory
+    owner: "{{ item.user }}"
+    mode: "0700"
+  loop: "{{ kubeconfig_users }}"
+
+- name: Install kubeconfig for root and the SSH user
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ item.home }}/.kube/config"
+    remote_src: true
+    owner: "{{ item.user }}"
+    mode: "0600"
+  loop: "{{ kubeconfig_users }}"
+
+- name: Fetch kubeconfig to the Ansible controller
+  ansible.builtin.fetch:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ kubeconfig_local_path }}"
+    flat: true
+  when: inventory_hostname == first_master

@@ -1,0 +1,8 @@
+---
+first_master: "{{ groups['masters'][0] }}"
+control_plane_endpoint: "{{ control_plane_vip if control_plane_vip | length > 0 else hostvars[first_master].node_ip }}"
+
+# Users that get ~/.kube/config on the masters
+kubeconfig_users: >-
+  {{ [{'user': 'root', 'home': '/root'}]
+     + ([{'user': ansible_user, 'home': '/home/' ~ ansible_user}] if (ansible_user | default('root')) != 'root' else []) }}

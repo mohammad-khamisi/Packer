@@ -1,0 +1,119 @@
+---
+- name: Check supported OS family
+  ansible.builtin.assert:
+    that: ansible_os_family in ['RedHat', 'Debian']
+    fail_msg: "Only RHEL-family (Rocky/Alma/RHEL) and Debian-family (Ubuntu/Debian) are supported"
+
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Add all cluster nodes to /etc/hosts
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} KUBERNETES NODES (managed by Ansible)"
+    block: |
+      {% for host in groups['k8s_cluster'] %}
+      {{ hostvars[host].node_ip }} {{ host }}
+      {% endfor %}
+      {% if control_plane_vip | length > 0 %}
+      {{ control_plane_vip }} k8s-api
+      {% endif %}
+
+- name: Set time zone
+  community.general.timezone:
+    name: "{{ timezone }}"
+
+- name: Install base packages (RedHat)
+  ansible.builtin.dnf:
+    name: "{{ common_packages_redhat }}"
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Install base packages (Debian)
+  ansible.builtin.apt:
+    name: "{{ common_packages_debian }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == 'Debian'
+
+- name: Configure NTP servers
+  ansible.builtin.copy:
+    dest: "{{ '/etc/chrony.conf' if ansible_os_family == 'RedHat' else '/etc/chrony/chrony.conf' }}"
+    mode: "0644"
+    content: |
+      {% for s in ntp_servers %}
+      server {{ s }} iburst
+      {% endfor %}
+      driftfile /var/lib/chrony/{{ 'drift' if ansible_os_family == 'RedHat' else 'chrony.drift' }}
+      makestep 1.0 3
+      rtcsync
+  when: ntp_servers | length > 0
+  notify: Restart chrony
+
+- name: Enable time sync
+  ansible.builtin.service:
+    name: "{{ 'chronyd' if ansible_os_family == 'RedHat' else 'chrony' }}"
+    state: started
+    enabled: true
+
+# ---------- swap ----------
+- name: Disable swap now
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb > 0
+  changed_when: true
+
+- name: Comment out swap entries in /etc/fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#\s]+\s+\S+\s+swap\s+.*)$'
+    replace: '# \1'
+
+- name: Check for zram-generator
+  ansible.builtin.stat:
+    path: /usr/lib/systemd/system-generators/zram-generator
+  register: zram_gen
+
+- name: Disable zram swap (empty zram-generator.conf)
+  ansible.builtin.copy:
+    dest: /etc/systemd/zram-generator.conf
+    content: ""
+    mode: "0644"
+  when: zram_gen.stat.exists
+
+# ---------- kernel ----------
+- name: Load kernel modules on boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/kubernetes.conf
+    mode: "0644"
+    content: |
+      {% for m in common_kernel_modules %}
+      {{ m }}
+      {% endfor %}
+
+- name: Load kernel modules now
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ common_kernel_modules }}"
+
+- name: Set sysctl parameters
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-kubernetes.conf
+    reload: true
+  loop: "{{ common_sysctl | dict2items }}"
+
+# ---------- SELinux ----------
+- name: Set SELinux mode
+  ansible.posix.selinux:
+    policy: targeted
+    state: "{{ selinux_state }}"
+  when:
+    - ansible_os_family == 'RedHat'
+    - ansible_selinux.status | default('disabled') == 'enabled'
+
+- name: Configure firewall
+  ansible.builtin.include_tasks: firewall.yml

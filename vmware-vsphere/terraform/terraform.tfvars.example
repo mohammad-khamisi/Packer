@@ -1,0 +1,50 @@
+# Copy to terraform.tfvars and edit:  cp terraform.tfvars.example terraform.tfvars
+# Better: pass the password via an env var instead of this file:
+#   export TF_VAR_vsphere_password='...'
+
+# ---------- vCenter ----------
+vsphere_server               = "vcenter.example.local"
+vsphere_user                 = "administrator@vsphere.local"
+# vsphere_password           = "change-me"
+vsphere_allow_unverified_ssl = true
+
+# ---------- vSphere inventory ----------
+datacenter    = "DC01"
+cluster       = "Cluster01"
+datastore     = "datastore1"
+network       = "VM Network"
+template      = "templates/rocky10-template" # template built with Packer (needs cloud-init + open-vm-tools)
+vm_folder     = "kubernetes"
+resource_pool = "" # "" = cluster root
+
+enable_anti_affinity = true
+
+# ---------- Kubernetes nodes ----------
+cluster_name = "k8s"
+
+masters = {
+  "k8s-master-01" = { ip = "192.168.10.11" }
+  "k8s-master-02" = { ip = "192.168.10.12" }
+  "k8s-master-03" = { ip = "192.168.10.13" }
+}
+
+workers = {
+  "k8s-worker-01" = { ip = "192.168.10.21" }
+  "k8s-worker-02" = { ip = "192.168.10.22" }
+  "k8s-worker-03" = { ip = "192.168.10.23", num_cpus = 8, memory = 16384, disk_size = 200 } # per-node override
+}
+
+master_defaults = { num_cpus = 2, memory = 4096, disk_size = 50 }
+worker_defaults = { num_cpus = 4, memory = 8192, disk_size = 100 }
+
+# ---------- Guest network / access ----------
+ipv4_netmask = 24
+ipv4_gateway = "192.168.10.1"
+dns_servers  = ["192.168.10.1", "8.8.8.8"]
+domain       = "k8s.local"
+timezone     = "Asia/Tehran"
+
+customization_method = "cloud-init" # or "vmware"
+ssh_user             = "ansible"
+ssh_public_key_file  = "~/.ssh/id_ed25519.pub"
+ssh_private_key_file = "~/.ssh/id_ed25519"

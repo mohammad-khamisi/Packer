@@ -1,0 +1,42 @@
+# Copy to terraform.tfvars and edit:  cp terraform.tfvars.example terraform.tfvars
+# Set the password via environment instead of this file:
+#   export TF_VAR_vsphere_password='...'
+
+vsphere_server               = "vcenter.example.local"
+vsphere_user                 = "administrator@vsphere.local"
+vsphere_allow_unverified_ssl = true
+
+datacenter = "Datacenter"
+cluster    = "Cluster01"
+datastore  = "datastore1"
+network    = "VM Network"
+template   = "rocky10-template"
+
+folder        = "terraform-vms"
+create_folder = true
+
+domain       = "example.local"
+time_zone    = "Asia/Tehran"
+ipv4_netmask = 24
+ipv4_gateway = "192.168.10.1"
+dns_servers  = ["192.168.10.1", "8.8.8.8"]
+
+vms = {
+  "web-01" = {
+    cpus         = 2
+    memory_mb    = 4096
+    disk_gb      = 40
+    ipv4_address = "192.168.10.51"
+  }
+
+  "db-01" = {
+    cpus           = 4
+    memory_mb      = 8192
+    disk_gb        = 60
+    extra_disks_gb = [100]
+    ipv4_address   = "192.168.10.52"
+  }
+
+  # DHCP example (no ipv4_address):
+  # "test-01" = {}
+}

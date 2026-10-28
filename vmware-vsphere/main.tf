@@ -18,8 +18,8 @@ resource "vsphere_virtual_machine" "vm" {
   num_cpus = each.value.cpus
   memory   = each.value.memory_mb
 
-  # Inherit hardware settings from the template.
-  guest_id  = data.vsphere_virtual_machine.template.guest_id
+  # Rocky Linux 10 guest type; null falls back to the template's guest type.
+  guest_id  = coalesce(var.guest_id, data.vsphere_virtual_machine.template.guest_id)
   firmware  = data.vsphere_virtual_machine.template.firmware
   scsi_type = data.vsphere_virtual_machine.template.scsi_type
 
@@ -48,32 +48,22 @@ resource "vsphere_virtual_machine" "vm" {
     }
   }
 
+  # No vSphere guest customization: network, hostname, users and first-boot
+  # commands are applied by cloud-init (VMware datasource) - see cloud-init.tf.
   clone {
     template_uuid = data.vsphere_virtual_machine.template.id
+  }
 
-    customize {
-      timeout = var.customize_timeout
-
-      linux_options {
-        host_name = each.key
-        domain    = var.domain
-        time_zone = var.time_zone
-      }
-
-      # Static IP when ipv4_address is set, otherwise DHCP.
-      network_interface {
-        ipv4_address = each.value.ipv4_address
-        ipv4_netmask = each.value.ipv4_address != null ? var.ipv4_netmask : null
-      }
-
-      ipv4_gateway    = var.ipv4_gateway
-      dns_server_list = var.dns_servers
-      dns_suffix_list = var.domain != null ? [var.domain] : []
-    }
+  extra_config = {
+    "guestinfo.metadata"          = base64encode(local.cloud_init_metadata[each.key])
+    "guestinfo.metadata.encoding" = "base64"
+    "guestinfo.userdata"          = base64encode(local.cloud_init_userdata[each.key])
+    "guestinfo.userdata.encoding" = "base64"
   }
 
   lifecycle {
-    # Avoid re-creating VMs when the template is rebuilt/replaced.
-    ignore_changes = [clone[0].template_uuid]
+    # cloud-init only runs on first boot, so later changes to it (or a rebuilt
+    # template) must not modify or re-create existing VMs.
+    ignore_changes = [clone[0].template_uuid, extra_config]
   }
 }
